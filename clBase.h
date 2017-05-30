@@ -32,6 +32,7 @@ int convertToString(const char *filename, std::string* s);
 GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_path);
 
 //global variables
+	extern char* THIS_FOLDER;
 	extern cl_context context;
 	extern cl_int err;
 	extern cl_command_queue commandQueue;

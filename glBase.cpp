@@ -17,8 +17,8 @@
 			"gpuMonitor",
 			SDL_WINDOWPOS_CENTERED,
 			SDL_WINDOWPOS_CENTERED,
-			1920,
-			1080,
+			800,
+			600,
 			SDL_WINDOW_OPENGL
 		);
 		if (!window)
@@ -55,7 +55,9 @@
 	}
 
 	 int glWrapper::initGl() {
-		programID = LoadShaders("C:\\Users\\stud3aii_2\\Desktop\\HelloWorld\\shaders\\vertex.glsl", "C:\\Users\\stud3aii_2\\Desktop\\HelloWorld\\shaders\\fragment.glsl");
+	    char sh1[100]; strcpy(sh1, THIS_FOLDER); strcat(sh1, "\\shaders\\vertex.glsl");
+		char sh2[100]; strcpy(sh2, THIS_FOLDER); strcat(sh2, "\\shaders\\fragment.glsl");
+		programID = LoadShaders(sh1, sh2);
 
 		//define VAO
 		GLuint VAO;

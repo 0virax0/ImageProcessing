@@ -1,5 +1,6 @@
 #include "clBase.h"
 #include "glBase.h"
+char* THIS_FOLDER = "C:\\Users\\filip\\Desktop\\ImageProcessing";
 
 using namespace std;
 
@@ -187,7 +188,7 @@ int printErr(T input, string specs) {
 	
 #pragma endregion
 #pragma region class destroyer
-	destroyer::destroyer(){
+	destroyer::destroyer(){ 
 
 	}
 	destroyer::~destroyer() {
@@ -198,7 +199,6 @@ int printErr(T input, string specs) {
 			if (ptr != NULL)
 				ptr->destroy();	
 		}
-		system("pause");
 	}
 #pragma endregion
 #pragma region class RAIIscope
@@ -353,7 +353,7 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 				outputImage = opengl->createGLtexture(width, height, CL_MEM_READ_WRITE, &outTextureID);
 				//imageOutBuffer=(unsigned char*)malloc(height*width*sizeof(unsigned char)*4);
 				//outputImage=clCreateImage2D(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, &format, width, height, 0, (void* )imageOutBuffer, 0);
-				new destroyable<cl_mem>(&outputImage, this); 
+				new destroyable<cl_mem>(&outputImage, this);
 
 				//mapping
 				size_t origin[3] = { 0, 0, 0 };
@@ -413,6 +413,11 @@ int saveImage(const char *filename, image& img) {
 	tjFree(_compressedImage);
 	return 1;
 }
+
+typedef struct kernel_nonPtr_Args{
+	int width;
+	int height;
+};
 
 class clWrapper : RAIIscope {
 public:
@@ -480,7 +485,8 @@ public:
 
 	/*Step 5: Create program object */
 	int createProgram() {
-		const char *filename = "C:\\Users\\stud3aii_2\\Desktop\\HelloWorld\\bin\\x86_64\\Debug\\HelloWorld_Kernel.cl";
+		char str1[100]; strcpy(str1, THIS_FOLDER); strcat(str1, "\\bin\\x86_64\\Debug\\HelloWorld_Kernel.cl");
+		const char *filename = str1;
 		char* sourceStr = NULL;
 		convertToString(filename, &sourceStr);
 		destroyable<void*>wr((void**)&sourceStr, NULL);	//destroy within scope
@@ -514,7 +520,8 @@ public:
 		//load image To GPU
 		img = new image();
 		new destroyable<image*>(&img, opencl);
-		img->loadImage("C:\\Users\\stud3aii_2\\Desktop\\HelloWorld\\bin\\x86_64\\Debug\\imgTest.jpg");
+		char str1[100]; strcpy(str1, THIS_FOLDER); strcat(str1, "\\bin\\x86_64\\Debug\\imgTest.jpg");
+		img->loadImage(str1);
 		if (img->size == 0) return 0;
 		return 1;
 	}
@@ -529,6 +536,11 @@ public:
 
 	/*Step 9: Sets Kernel arguments.*/
 	int setKargs() {
+		//create a non ptr args BUffer
+		kernel_nonPtr_Args Barg{ img->width, img->height };
+		cl_mem argBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(kernel_nonPtr_Args), (void *)&Barg, &err);
+		printErr(err, "argBuffer failed");
+
 		float imgKernelPtr[] = {   
 			1,  0,  -1,
 			2,  0,  -2,
@@ -536,7 +548,7 @@ public:
 		};
 		imgKernel = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9 * sizeof(float), (void *)imgKernelPtr, &err);
 		printErr(err, "imgkernel failed");  
-		new destroyable<cl_mem>(&imgKernel, opencl);
+		new destroyable<cl_mem>(&imgKernel, opencl); 
 
 		float imgKernelPtr1[] = {    
 			-1, -2, -1,
@@ -547,12 +559,11 @@ public:
 		printErr(err, "imgkernel failed");  
 		new destroyable<cl_mem>(&imgKernel1, opencl);
 		
-		printErr(clSetKernelArg(kernel, 0, sizeof(img->height), (void*) &img->width), "failed set imgkernel arg");
-		printErr(clSetKernelArg(kernel, 1, sizeof(img->height), (void*) &img->height), "failed set imgkernel arg");
-		printErr(clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&imgKernel), "failed set imgkernel arg");
-		printErr(clSetKernelArg(kernel, 3, sizeof(cl_mem), (void *)&imgKernel1), "failed set imgkernel arg");
-		printErr(clSetKernelArg(kernel, 4, sizeof(cl_mem), (void *)&img->inputImage), "failed set input arg");
-		printErr(clSetKernelArg(kernel, 5, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
+		printErr(clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
+		printErr(clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&imgKernel), "failed set imgkernel arg");
+		printErr(clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&imgKernel1), "failed set imgkernel1 arg");
+		printErr(clSetKernelArg(kernel, 3, sizeof(cl_mem), (void *)&img->inputImage), "failed set input arg");
+		printErr(clSetKernelArg(kernel, 4, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
 		 
 		return 1;
 	}

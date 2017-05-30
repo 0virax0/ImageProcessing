@@ -3,6 +3,11 @@ __constant sampler_t sampler =
 	| CLK_ADDRESS_CLAMP_TO_EDGE 
 	| CLK_FILTER_NEAREST;
 
+typedef struct tag_kernel_nonPtr_Args{
+	int width;
+	int height;
+}kernel_nonPtr_Args;
+
 float filterValue (__constant const float* filterWeights,
 	const int x, const int y)
 {
@@ -10,8 +15,7 @@ float filterValue (__constant const float* filterWeights,
 }
 
 __kernel void filter(
-    __constant int* width,
-    __constant int* height,
+    __constant kernel_nonPtr_Args* args,
     __constant float* filterWeightsx,
     __constant float* filterWeightsy,
     __read_only image2d_t input,
@@ -30,5 +34,5 @@ __kernel void filter(
 	}
 	float coeffx = sumx.x + sumx.y + sumx.z;
 	float coeffy = sumy.x + sumy.y + sumy.z;
-	write_imagef (output, (int2)(pos.x, height-pos.y), (float4)(coeffx ,coeffy,0.0f,1.0f));
+	write_imagef (output, (int2)(pos.x, args->height-pos.y), (float4)(coeffx ,coeffy,0.0f,1.0f));
 }

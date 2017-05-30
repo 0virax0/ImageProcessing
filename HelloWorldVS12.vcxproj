@@ -33,7 +33,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v110</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -78,8 +78,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)bin\x86_64\$(Configuration)\</OutDir>
     <IntDir>temp\x86_64\$(Configuration)\</IntDir>
-    <IncludePath>C:\Users\stud3aii_2\Desktop\HelloWorld\SDL2\include;C:\Users\stud3aii_2\Desktop\HelloWorld\glew-2.0.0\include;C:\Users\stud3aii_2\AMD APP SDK\2.9\include\SDKUtil;C:\Users\stud3aii_2\Desktop\HelloWorld\libjpeg-turbo64\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\stud3aii_2\Desktop\HelloWorld\SDL2\lib\x64;C:\Users\stud3aii_2\HelloWorld\glew-2.0.0\lib;C:\Users\stud3aii_2\HelloWorld\libjpeg-turbo64\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)SDL2\include;$(SolutionDir)glew-2.0.0\include;$(HOMEPATH)\AMD APP SDK\2.9-1\include\SDKUtil;$(SolutionDir)libjpeg-turbo64\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)SDL2\lib\x64;$(SolutionDir)glew-2.0.0\lib;$(SolutionDir)libjpeg-turbo64\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)bin\x86_64\$(Configuration)\</OutDir>
@@ -130,7 +130,7 @@
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>C:\Users\stud3aii_2\Desktop\HelloWorld\SDL2\lib\x64;C:\Users\stud3aii_2\Desktop\HelloWorld\glew-2.0.0\lib;C:\Users\stud3aii_2\Desktop\HelloWorld\libjpeg-turbo64\lib;..\..\..\..\lib\win64\;$(AMDAPPSDKROOT)\lib\x86_64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)\SDL2\lib\x64;$(SolutionDir)\glew-2.0.0\lib;$(SolutionDir)\libjpeg-turbo64\lib;..\..\..\..\lib\win64\;$(AMDAPPSDKROOT)\lib\x86_64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;turbojpeg.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;OpenCL.lib;turbojpeg-static.lib;glew32.lib;glew32s.lib;opengl32.lib;SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SubSystem>Console</SubSystem>
       <ImportLibrary>$(SolutionDir)bin/x86_64/Debug/HelloWorld.lib</ImportLibrary>
