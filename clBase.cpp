@@ -1,6 +1,6 @@
 #include "clBase.h"
 #include "glBase.h"
-char* THIS_FOLDER = "C:\\Users\\filip\\Desktop\\ImageProcessing";
+char* THIS_FOLDER = "C:\\Users\\filip\\Desktop\\ImageProcessing"; 
 
 using namespace std;
 
@@ -134,7 +134,7 @@ int printErr(T input, string specs) {
 	destroyable<T>::destroyable(T* p, RAIIscope* scope) : reference(p) {	
 		if (scope != NULL) {
 			scope->localRAII->arr.push_back(this);
-			localRAIIIndex = scope->localRAII->arr.size() - 1;
+			localRAIIIndex = (int) scope->localRAII->arr.size() - 1;
 		}	
 	}
 	template <typename T>
@@ -337,22 +337,21 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 				file.read((char*)_compressedImage, size);
 				destroyable<void*>wr((void**)&_compressedImage, NULL);
 
-				//decompress header		
+				//decompress header
 				int h, w;
 				tjDecompressHeader2(_jpegDecompressor, _compressedImage, size, &w, &h, &jpegSubsamp);
-				width = (size_t)((unsigned)w);
-				height = (size_t)((unsigned)h);
+				width = (unsigned int)w;
+				height = (unsigned int)h;
+				
 				size = COLOR_COMPONENTS * width * height;
 
 				//create image clmem
 				inputImage = clCreateImage2D(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, &format, width, height, 0, NULL, &err);
 				printErr(err, "imageIn cl_mem failed");
 				new destroyable<cl_mem>(&inputImage, this);
-
+				 
 				//create gl- cl shared buffer
 				outputImage = opengl->createGLtexture(width, height, CL_MEM_READ_WRITE, &outTextureID);
-				//imageOutBuffer=(unsigned char*)malloc(height*width*sizeof(unsigned char)*4);
-				//outputImage=clCreateImage2D(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, &format, width, height, 0, (void* )imageOutBuffer, 0);
 				new destroyable<cl_mem>(&outputImage, this);
 
 				//mapping
@@ -368,7 +367,7 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 
 				//unmap
 				clEnqueueUnmapMemObject(commandQueue, inputImage, imageBuffer, 0, NULL, NULL);
-
+				
 				return SUCCESS;
 			}
 			std::cout << "Error: failed to open file: " << filename << endl;
@@ -417,6 +416,8 @@ int saveImage(const char *filename, image& img) {
 typedef struct kernel_nonPtr_Args{
 	int width;
 	int height;
+	int offsetX;
+	int offsetY;
 };
 
 class clWrapper : RAIIscope {
@@ -428,6 +429,7 @@ public:
 	cl_kernel kernel;
 	cl_mem imgKernel;
 	cl_mem imgKernel1;
+	cl_mem imgKernel2;
 public:
 	//constructor
 	clWrapper() : RAIIscope() {};
@@ -492,7 +494,7 @@ public:
 		destroyable<void*>wr((void**)&sourceStr, NULL);	//destroy within scope
 		const char* source = sourceStr;
 		size_t sourceSize[] = { strlen(source) }; 
-
+		 
 		program = clCreateProgramWithSource(context, 1, &source, sourceSize, NULL);
 
 		return 1;
@@ -531,52 +533,74 @@ public:
 		kernel = clCreateKernel(program, "filter", &err);
 		printErr(err, "kernel creation failed");  
 		new destroyable<cl_kernel>(&kernel, opencl);
+
+		cl_ulong size;
+		clGetDeviceInfo(devices[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &size, 0);
+		cout << size << endl;
 		return 1;
 	}
 
 	/*Step 9: Sets Kernel arguments.*/
 	int setKargs() {
 		//create a non ptr args BUffer
-		kernel_nonPtr_Args Barg{ img->width, img->height };
+		kernel_nonPtr_Args Barg;
+		Barg.width = img->width;
+		Barg.height = img->height;
+		Barg.offsetX = 1280;
+		Barg.offsetY = 640;
+		
 		cl_mem argBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(kernel_nonPtr_Args), (void *)&Barg, &err);
 		printErr(err, "argBuffer failed");
 
 		float imgKernelPtr[] = {   
-			1,  0,  -1,
-			2,  0,  -2,
-			1,  0,  -1
-		};
+			0.0625f,  0.125f,  0.0625f,
+			0.125f,  0.025f,  0.125f,
+			0.0625f,  0.125f,  0.0625f
+		};	
 		imgKernel = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9 * sizeof(float), (void *)imgKernelPtr, &err);
-		printErr(err, "imgkernel failed");  
-		new destroyable<cl_mem>(&imgKernel, opencl); 
+		printErr(err, "imgkernel failed");
+		new destroyable<cl_mem>(&imgKernel, opencl);
 
-		float imgKernelPtr1[] = {    
-			-1, -2, -1,
-			 0,  0,  0,
-			 1,  2,  1
+		float imgKernelPtr1[] = {
+			1.0f, 0.0f, -1.0f,
+			2.0f,	0,	-2.0f,
+			1.0f, 0.0f, -1.0f
 		};
 		imgKernel1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9 * sizeof(float), (void *)imgKernelPtr1, &err);
-		printErr(err, "imgkernel failed");  
+		printErr(err, "imgkernel failed");
 		new destroyable<cl_mem>(&imgKernel1, opencl);
+
+		float imgKernelPtr2[] = {
+			1.0f, 2.0f, 1.0f,
+			0,	  0,	0,
+			-1.0f, -2.0f, -1.0f
+		};
+		imgKernel2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9 * sizeof(float), (void *)imgKernelPtr2, &err);
+		printErr(err, "imgkernel failed");
+		new destroyable<cl_mem>(&imgKernel2, opencl);
 		
 		printErr(clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
 		printErr(clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&imgKernel), "failed set imgkernel arg");
 		printErr(clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&imgKernel1), "failed set imgkernel1 arg");
-		printErr(clSetKernelArg(kernel, 3, sizeof(cl_mem), (void *)&img->inputImage), "failed set input arg");
-		printErr(clSetKernelArg(kernel, 4, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
-		 
+		printErr(clSetKernelArg(kernel, 3, sizeof(cl_mem), (void *)&imgKernel2), "failed set imgkernel2 arg");
+		printErr(clSetKernelArg(kernel, 4, sizeof(cl_mem), (void *)&img->inputImage), "failed set input arg");
+		printErr(clSetKernelArg(kernel, 5, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
+	     	 
 		return 1;
-	}
+	} 
 
 	/*Step 10: Running the kernel.*/
 	int startKernel() {
-		size_t global_work_size[] = { img->width, img->height, 0 };
+  
+		size_t global_work_size[] = { 4096, 2048, 0 };
+		size_t local_work_size[] = { 16, 16, 0 };
 		cout << "start enqueue kernel" << endl;
 		for (int i = 0; i < 1;i++)
-			printErr(clEnqueueNDRangeKernel(commandQueue, kernel, 2, NULL, global_work_size, NULL, 0, NULL, NULL), "failed ndrange enqueue");
+			printErr(clEnqueueNDRangeKernel(commandQueue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL), "failed ndrange enqueue");
+           
 		return 1;
 	}
-
+	 
 	//final Step 11: write to screen
 	int getToScreen() {
 		return opengl->glOps(img);
@@ -589,7 +613,7 @@ public:
 		opengl->Cleanup();
 		cout << "free cl_command_queue" << endl;
 		printErr(clReleaseCommandQueue(commandQueue), "free commandQueue failed");
-		cout << "free cl_program" << endl;
+		cout << "free cl_program" << endl; 
 		printErr(clReleaseProgram(program), "free program failed");
 		cout << "free cl_context" << endl;
 		 printErr(clReleaseContext(context), "free context failed");
@@ -605,8 +629,8 @@ public:
 
 int main(int argc, char* argv[])
 {
-	opencl = new clWrapper();
 
+	opencl = new clWrapper();
 	opencl->getPlatform();
 	opencl->getDevice();
 	opencl->createContext();

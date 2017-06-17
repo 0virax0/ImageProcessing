@@ -70,9 +70,9 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 //image class
 	class image : RAIIscope {
 	public: 
-			size_t size;
-			size_t height;
-			size_t width;
+			unsigned int size;
+			unsigned int height;
+			unsigned int width;
 			int jpegSubsamp;
 			cl_mem inputImage;
 			cl_mem outputImage;

@@ -15,10 +15,10 @@
 		//create Window
 		window = SDL_CreateWindow(
 			"gpuMonitor",
+ 			SDL_WINDOWPOS_CENTERED, 
 			SDL_WINDOWPOS_CENTERED,
-			SDL_WINDOWPOS_CENTERED,
-			800,
-			600,
+			1920, 
+			1080, 
 			SDL_WINDOW_OPENGL
 		);
 		if (!window)
@@ -163,7 +163,6 @@
 
 		SDL_GL_SwapWindow(window);
 		releaseTexture(img->outputImage);
-
 		glFinish();
 		return SUCCESS;
 	} 
