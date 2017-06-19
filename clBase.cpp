@@ -320,7 +320,7 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 			format.image_channel_data_type = CL_UNORM_INT8;
 		}
 
-		int image::loadImage(const char *filename) {
+		int image::loadImage(const char *filename, bool isReloading) {
 			tjhandle _jpegDecompressor = tjInitDecompress();
 			unsigned char* _compressedImage; //!< _compressedImage from stream
 			size_t size;
@@ -345,15 +345,28 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 				
 				size = COLOR_COMPONENTS * width * height;
 
+			if(!isReloading){
 				//create image clmem
 				inputImage = clCreateImage2D(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, &format, width, height, 0, NULL, &err);
 				printErr(err, "imageIn cl_mem failed");
 				new destroyable<cl_mem>(&inputImage, this);
-				 
-				//create gl- cl shared buffer
-				outputImage = opengl->createGLtexture(width, height, CL_MEM_READ_WRITE, &outTextureID);
-				new destroyable<cl_mem>(&outputImage, this);
 
+				//create reductionBuffer
+				reductionBuffer0 = clCreateBuffer(context, CL_MEM_READ_WRITE, (4096 + 2048) * 2048 * 2 * 4, NULL, &err);
+				printErr(err, "reductionBuffer cl_mem failed");
+				new destroyable<cl_mem>(&reductionBuffer0, this);
+
+				//create gl- cl shared buffer
+				outputImage = opengl->createGLtexture(4096+2048, 2048, CL_MEM_READ_WRITE, &outTextureID);
+				new destroyable<cl_mem>(&outputImage, this);
+			}
+			else {
+				//create reductionBuffer
+				reductionBuffer1 = clCreateBuffer(context, CL_MEM_READ_WRITE, (4096 + 2048) * 2048 * 2 * 4, NULL, &err);
+				printErr(err, "reductionBuffer cl_mem failed");
+				new destroyable<cl_mem>(&reductionBuffer1, this);
+			}
+				
 				//mapping
 				size_t origin[3] = { 0, 0, 0 };
 				size_t region[3] = { width, height, 1 };
@@ -418,6 +431,8 @@ typedef struct kernel_nonPtr_Args{
 	int height;
 	int offsetX;
 	int offsetY;
+	int old_offsetX;
+	int old_offsetY;
 };
 
 class clWrapper : RAIIscope {
@@ -426,7 +441,9 @@ public:
 	cl_device_id *devices;
 	cl_program program;
 	image* img;
-	cl_kernel kernel;
+	cl_kernel kernelFilter;
+	cl_kernel kernelReduction;
+	cl_kernel kernelMatching;
 	cl_mem imgKernel;
 	cl_mem imgKernel1;
 	cl_mem imgKernel2;
@@ -522,41 +539,50 @@ public:
 		//load image To GPU
 		img = new image();
 		new destroyable<image*>(&img, opencl);
-		char str1[100]; strcpy(str1, THIS_FOLDER); strcat(str1, "\\bin\\x86_64\\Debug\\imgTest.jpg");
-		img->loadImage(str1);
+		char str1[100]; strcpy(str1, THIS_FOLDER); strcat(str1, "\\bin\\x86_64\\Debug\\imgTest0.jpg");
+		img->loadImage(str1, false);
 		if (img->size == 0) return 0;
 		return 1;
 	}
-
-	/*Step 8: Create kernel object*/
-	int createKernel() {
-		kernel = clCreateKernel(program, "filter", &err);
-		printErr(err, "kernel creation failed");  
-		new destroyable<cl_kernel>(&kernel, opencl);
-
-		cl_ulong size;
-		clGetDeviceInfo(devices[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &size, 0);
-		cout << size << endl;
+	int reLoadImage() {
+		char str1[100]; strcpy(str1, THIS_FOLDER); strcat(str1, "\\bin\\x86_64\\Debug\\imgTest1.jpg");
+		img->loadImage(str1, true);
+		if (img->size == 0) return 0;
 		return 1;
 	}
+	/*Step 8: Create kernel object*/
+	int createKernel() {
+		kernelFilter = clCreateKernel(program, "filter", &err);
+		printErr(err, "kernel0 creation failed");
+		new destroyable<cl_kernel>(&kernelFilter, opencl);
+		
+		kernelReduction = clCreateKernel(program, "reduction", &err);
+		printErr(err, "kernel1 creation failed");
+		new destroyable<cl_kernel>(&kernelReduction, opencl);
 
-	/*Step 9: Sets Kernel arguments.*/
-	int setKargs() {
+		kernelMatching = clCreateKernel(program, "matching", &err);
+		printErr(err, "kernel1 creation failed");
+		new destroyable<cl_kernel>(&kernelMatching, opencl);
+
+		return 1;
+	}
+	/*Step 9.01: set kernel0.*/
+	int set0(cl_mem* reduction) {
 		//create a non ptr args BUffer
 		kernel_nonPtr_Args Barg;
 		Barg.width = img->width;
 		Barg.height = img->height;
 		Barg.offsetX = 1280;
 		Barg.offsetY = 640;
-		
+
 		cl_mem argBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(kernel_nonPtr_Args), (void *)&Barg, &err);
 		printErr(err, "argBuffer failed");
 
-		float imgKernelPtr[] = {   
+		float imgKernelPtr[] = {
 			0.0625f,  0.125f,  0.0625f,
 			0.125f,  0.025f,  0.125f,
 			0.0625f,  0.125f,  0.0625f
-		};	
+		};
 		imgKernel = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9 * sizeof(float), (void *)imgKernelPtr, &err);
 		printErr(err, "imgkernel failed");
 		new destroyable<cl_mem>(&imgKernel, opencl);
@@ -578,36 +604,163 @@ public:
 		imgKernel2 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9 * sizeof(float), (void *)imgKernelPtr2, &err);
 		printErr(err, "imgkernel failed");
 		new destroyable<cl_mem>(&imgKernel2, opencl);
-		
-		printErr(clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
-		printErr(clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&imgKernel), "failed set imgkernel arg");
-		printErr(clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&imgKernel1), "failed set imgkernel1 arg");
-		printErr(clSetKernelArg(kernel, 3, sizeof(cl_mem), (void *)&imgKernel2), "failed set imgkernel2 arg");
-		printErr(clSetKernelArg(kernel, 4, sizeof(cl_mem), (void *)&img->inputImage), "failed set input arg");
-		printErr(clSetKernelArg(kernel, 5, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
-	     	 
-		return 1;
-	} 
 
-	/*Step 10: Running the kernel.*/
-	int startKernel() {
-  
+		printErr(clSetKernelArg(kernelFilter, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
+		printErr(clSetKernelArg(kernelFilter, 1, sizeof(cl_mem), (void *)&imgKernel), "failed set imgkernel arg");
+		printErr(clSetKernelArg(kernelFilter, 2, sizeof(cl_mem), (void *)&imgKernel1), "failed set imgkernel1 arg");
+		printErr(clSetKernelArg(kernelFilter, 3, sizeof(cl_mem), (void *)&imgKernel2), "failed set imgkernel2 arg");
+		printErr(clSetKernelArg(kernelFilter, 4, sizeof(cl_mem), (void *)&img->inputImage), "failed set input arg");
+		printErr(clSetKernelArg(kernelFilter, 5, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
+		printErr(clSetKernelArg(kernelFilter, 6, sizeof(cl_mem), (void *)reduction), "failed set reductionBuffer arg");
+
+		return 1;
+	}
+	/*Step 9.02: Running kernel0.*/
+	int run0(){
 		size_t global_work_size[] = { 4096, 2048, 0 };
 		size_t local_work_size[] = { 16, 16, 0 };
-		cout << "start enqueue kernel" << endl;
-		for (int i = 0; i < 1;i++)
-			printErr(clEnqueueNDRangeKernel(commandQueue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL), "failed ndrange enqueue");
-           
+		cout << "-->start enqueue kernel 0" << endl; 
+
+		printErr(clEnqueueNDRangeKernel(commandQueue, kernelFilter, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL), "failed ndrange enqueue0");
+
+		return 1;
+	}
+	/*Step 9.11: Running kernel1.*/
+	int set1(cl_mem* reduction, int old_offsetX, int old_offsetY, int offsetX, int offsetY) {
+		kernel_nonPtr_Args Barg;
+		Barg.offsetX = offsetX;
+		Barg.offsetY = offsetY;
+		Barg.old_offsetX = old_offsetX;
+		Barg.old_offsetY = old_offsetY; 
+
+		cl_mem argBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(kernel_nonPtr_Args), (void *)&Barg, &err);
+		printErr(err, "argBuffer failed");
+
+		printErr(clSetKernelArg(kernelReduction, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
+		printErr(clSetKernelArg(kernelReduction, 1, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
+		printErr(clSetKernelArg(kernelReduction, 2, sizeof(cl_mem), (void *)reduction), "failed set reductionBuffer arg");
+
+		return 1; 
+	}
+	/*Step 9.12: Running kernel1.*/
+	int run1(int width, int height) {
+		size_t global_work_size[] = { width, height, 0 };
+		size_t local_work_size[] = { 16 , 16 , 0 };
+		if (width < 16 || height < 16) {
+			local_work_size[0] = width;
+			local_work_size[1] = height;
+		}
+
+		printErr(clEnqueueNDRangeKernel(commandQueue, kernelReduction, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL), "failed ndrange enqueue1");
+
+		return 1;
+	}
+	/*Step 9.21: Running kernel1.*/
+	int set2(int old_offsetX, int old_offsetY, int offsetX, int offsetY) {
+		kernel_nonPtr_Args Barg;
+		Barg.offsetX = offsetX;
+		Barg.offsetY = offsetY;
+		Barg.old_offsetX = old_offsetX;
+		Barg.old_offsetY = old_offsetY;
+
+		cl_mem argBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(kernel_nonPtr_Args), (void *)&Barg, &err);
+		printErr(err, "argBuffer failed");
+
+		printErr(clSetKernelArg(kernelMatching, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
+		printErr(clSetKernelArg(kernelMatching, 1, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
+		printErr(clSetKernelArg(kernelMatching, 2, sizeof(cl_mem), (void *)&img->reductionBuffer0), "failed set reductionBuffer0 arg");
+		printErr(clSetKernelArg(kernelMatching, 3, sizeof(cl_mem), (void *)&img->reductionBuffer1), "failed set reductionBuffer1 arg");
+
+		return 1; 
+	}
+	/*Step 9.22: Running kernel1.*/
+	int run2(int width, int height) {
+		size_t global_work_size[] = { width, height, 0 };
+		size_t local_work_size[] = { 16 , 16 , 0 };
+		if (width < 16 || height < 16) {
+			local_work_size[0] = width;
+			local_work_size[1] = height; 
+		}
+
+		printErr(clEnqueueNDRangeKernel(commandQueue, kernelMatching, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL), "failed ndrange enqueue2");
+
+		return 1;
+	}
+
+	/*Step 9: Running the kernel.*/
+	int startKernel() {
+		set0(&img->reductionBuffer0);
+		run0();
+
+		//reduction phase (9 steps)
+		cout << "-->start enqueue kernels 1" << endl;
+		int oldX = 0, oldY = 0, oldHeight = 2048;
+		for (int i = 0; i < 9; i++) {
+			clFinish(commandQueue);
+			
+			int newY = (i < 1) ? 0 : oldY + oldHeight;
+			set1(&img->reductionBuffer0, oldX, oldY, 4096, newY);
+			run1(2048 / pow(2,i), 1024 / pow(2, i));		//start half dimensions because it will expand
+
+			oldX = 4096;
+			oldY = (i < 1) ? 0 : oldY + oldHeight;
+			oldHeight /= 2;
+		}		
+		clFinish(commandQueue);
+		getToScreen();
+		system("pause");
+	//do the same for the second image
+		cout << "second image processing" << endl;
+		if (reLoadImage() == 0) cout << "image reloading failed";
+		set0(&img->reductionBuffer1);
+		run0();
+
+		//reduction phase (9 steps)
+		cout << "-->start enqueue kernels 1" << endl;
+	    oldX = 0, oldY = 0, oldHeight = 2048;
+		for (int i = 0; i < 9; i++) {
+			clFinish(commandQueue);
+
+			int newY = (i < 1) ? 0 : oldY + oldHeight;
+			set1(&img->reductionBuffer1, oldX, oldY, 4096, newY);
+			run1(2048 / pow(2, i), 1024 / pow(2, i));		//start half dimensions because it will expand
+
+			oldX = 4096;
+			oldY = (i < 1) ? 0 : oldY + oldHeight;
+			oldHeight /= 2;
+		}
+		clFinish(commandQueue);
+		getToScreen();
+		system("pause");
+
+	//merge them all
+		cout << "merging" << endl;
+
+		//expansion phase (9 steps)
+		cout << "-->start enqueue kernels 2" << endl;
+		oldY+=4, oldHeight = 2;
+		for (int i = 0; i < 9; i++) {
+			clFinish(commandQueue); 
+
+			oldHeight *= 2;
+			int newY = oldY - oldHeight; 
+			set2(4096, oldY, 4096, newY);
+			run2(4 * pow(2, i), 2 * pow(2, i));		//start half dimensions because it will expand
+			oldY = newY;
+		}  
+		clFinish(commandQueue); 
+		getToScreen();
+
+		//printErr(clReleaseMemObject(img->inputImage), "free failed");
 		return 1;
 	}
 	 
-	//final Step 11: write to screen
+	//final Step 10: write to screen
 	int getToScreen() {
-		return opengl->glOps(img);
-		
+		return opengl->glOps(img);	
 	}
 
-	/*Step 12: Clean the resources.*/
+	/*Step 11: Clean the resources.*/
 	int cleanUp() {
 		cout << "free glWrapper" << endl;
 		opengl->Cleanup();
@@ -616,7 +769,7 @@ public:
 		cout << "free cl_program" << endl; 
 		printErr(clReleaseProgram(program), "free program failed");
 		cout << "free cl_context" << endl;
-		 printErr(clReleaseContext(context), "free context failed");
+		 printErr(clReleaseContext(context), "free context failed"); 
 		 return 1;
 	}
 
@@ -639,10 +792,8 @@ int main(int argc, char* argv[])
 	opencl->buildProgram();
 	opencl->loadImage();
 	opencl->createKernel();
-	opencl->setKargs();
 	opencl->startKernel(); 
 	//opencl->img->fetchOutImage();
-	opencl->getToScreen();
 
 	clFinish(commandQueue);
 	std::cout << "Passed!\n";

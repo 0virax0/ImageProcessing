@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <cmath>
 #include <CL/cl.h>
 #include <iostream>
 #include <fstream>
@@ -75,6 +76,8 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 			unsigned int width;
 			int jpegSubsamp;
 			cl_mem inputImage;
+			cl_mem reductionBuffer0;
+			cl_mem reductionBuffer1;
 			cl_mem outputImage;
 			GLuint outTextureID;
 			unsigned char* imageBuffer;
@@ -83,7 +86,7 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 			static const int COLOR_COMPONENTS = 4;
 
 			image();
-			int loadImage(const char *filename);
+			int loadImage(const char *filename, bool isReloading);
 			int fetchOutImage();
 
 	};

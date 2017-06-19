@@ -17,8 +17,8 @@
 			"gpuMonitor",
  			SDL_WINDOWPOS_CENTERED, 
 			SDL_WINDOWPOS_CENTERED,
-			1920, 
-			1080, 
+			1024, 
+			512, 
 			SDL_WINDOW_OPENGL
 		);
 		if (!window)
@@ -79,12 +79,12 @@
 		glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
 
 		static const GLfloat g_UV_buffer_data[] = {
-			-1.0f, -1.0f,
-			-1.0f, 0.1f, 
-			0.1f, 0.1f,
-			0.1f, 0.1f,
-			0.1f, -1.0f, 
-			-1.0f, -1.0f, 	
+			-1.0f, 0.0f,
+			-1.0f, -1.0f, 
+			0.0f, -1.0f,
+			0.0f, -1.0f,
+			0.0f, 0.0f, 
+			-1.0f, 0.0f, 	
 		};
 		// put into vertex buffer
 		glGenBuffers(1, &UVbuffer);
