@@ -356,7 +356,7 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 				printErr(err, "reductionBuffer cl_mem failed");
 				new destroyable<cl_mem>(&reductionBuffer0, this);
 
-				//create gl- cl shared buffer
+				//create gl- cl shared texture
 				outputImage = opengl->createGLtexture(4096+2048, 2048, CL_MEM_READ_WRITE, &outTextureID);
 				new destroyable<cl_mem>(&outputImage, this);
 			}
@@ -433,6 +433,7 @@ typedef struct kernel_nonPtr_Args{
 	int offsetY;
 	int old_offsetX;
 	int old_offsetY;
+	int distance;
 };
 
 class clWrapper : RAIIscope {
@@ -441,9 +442,11 @@ public:
 	cl_device_id *devices;
 	cl_program program;
 	image* img;
+	cl_mem VertexBuffer3D;
 	cl_kernel kernelFilter;
 	cl_kernel kernelReduction;
 	cl_kernel kernelMatching;
+	cl_kernel kernelTriangulation;
 	cl_mem imgKernel;
 	cl_mem imgKernel1;
 	cl_mem imgKernel2;
@@ -550,6 +553,13 @@ public:
 		if (img->size == 0) return 0;
 		return 1;
 	}
+	int createVertexBuffer(int width, int height) {
+		//create gl- cl shared buffer
+		GLuint vertexBuffer3dID;
+		VertexBuffer3D = opengl->createGLbuffer(width, height, CL_MEM_WRITE_ONLY);
+		new destroyable<cl_mem>(&VertexBuffer3D, this);
+		return 1;
+	}
 	/*Step 8: Create kernel object*/
 	int createKernel() {
 		kernelFilter = clCreateKernel(program, "filter", &err);
@@ -561,8 +571,12 @@ public:
 		new destroyable<cl_kernel>(&kernelReduction, opencl);
 
 		kernelMatching = clCreateKernel(program, "matching", &err);
-		printErr(err, "kernel1 creation failed");
+		printErr(err, "kernel2 creation failed");
 		new destroyable<cl_kernel>(&kernelMatching, opencl);
+		
+		kernelTriangulation = clCreateKernel(program, "triangulate", &err);
+		printErr(err, "kernel3 creation failed");
+		new destroyable<cl_kernel>(&kernelTriangulation, opencl);
 
 		return 1;
 	}
@@ -625,7 +639,7 @@ public:
 
 		return 1;
 	}
-	/*Step 9.11: Running kernel1.*/
+	/*Step 9.11: set kernel1.*/
 	int set1(cl_mem* reduction, int old_offsetX, int old_offsetY, int offsetX, int offsetY) {
 		kernel_nonPtr_Args Barg;
 		Barg.offsetX = offsetX;
@@ -655,7 +669,7 @@ public:
 
 		return 1;
 	}
-	/*Step 9.21: Running kernel1.*/
+	/*Step 9.21: set kernel2.*/
 	int set2(int old_offsetX, int old_offsetY, int offsetX, int offsetY) {
 		kernel_nonPtr_Args Barg;
 		Barg.offsetX = offsetX;
@@ -673,7 +687,7 @@ public:
 
 		return 1; 
 	}
-	/*Step 9.22: Running kernel1.*/
+	/*Step 9.22: Running kernel2.*/
 	int run2(int width, int height) {
 		size_t global_work_size[] = { width, height, 0 };
 		size_t local_work_size[] = { 16 , 16 , 0 };
@@ -683,6 +697,31 @@ public:
 		}
 
 		printErr(clEnqueueNDRangeKernel(commandQueue, kernelMatching, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL), "failed ndrange enqueue2");
+
+		return 1;
+	}
+	/*Step 9.31: set kernel3.*/
+	int set3(int panoramaDistance, int offsetX, int offsetY){
+		kernel_nonPtr_Args Barg;
+		Barg.offsetX = offsetX;
+		Barg.offsetY = offsetY;
+		Barg.distance = panoramaDistance;
+
+		cl_mem argBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(kernel_nonPtr_Args), (void *)&Barg, &err);
+		printErr(err, "argBuffer failed");
+
+		printErr(clSetKernelArg(kernelTriangulation, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
+		printErr(clSetKernelArg(kernelTriangulation, 1, sizeof(cl_mem), (void *)&VertexBuffer3D), "failed set VertexBuffer3D arg");
+		printErr(clSetKernelArg(kernelTriangulation, 2, sizeof(cl_mem), (void *)&img->reductionBuffer0), "failed set reductionBuffer0 arg");
+
+		return 1;
+	}
+	/*Step 9.32: Running kernel3.*/
+	int run3(int width, int height){
+		size_t global_work_size[] = { width, height, 0 };
+		size_t local_work_size[] = { 16 , 16 , 0 };
+
+		printErr(clEnqueueNDRangeKernel(commandQueue, kernelTriangulation, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL), "failed ndrange enqueue3");
 
 		return 1;
 	}
@@ -740,18 +779,27 @@ public:
 		cout << "-->start enqueue kernels 2" << endl;
 		oldY+=4, oldHeight = 2;
 		for (int i = 0; i < 9; i++) {
-			clFinish(commandQueue); 
+			clFinish(commandQueue);
 
 			oldHeight *= 2;
 			int newY = oldY - oldHeight; 
-			set2(4096, oldY, 4096, newY);
+			if(i<1) set2(4096, -1, 4096, newY); 
+			else set2(4096, oldY, 4096, newY);
 			run2(4 * pow(2, i), 2 * pow(2, i));		//start half dimensions because it will expand
 			oldY = newY;
 		}  
-		clFinish(commandQueue); 
+		clFinish(commandQueue);  
 		getToScreen();
+		system("pause");
 
-		//printErr(clReleaseMemObject(img->inputImage), "free failed");
+	//pass computed vertices to opengl
+		createVertexBuffer(2048, 1024);
+		cout << "-->start enqueue kernel 3" << endl;
+		set3(10, 2048, 0);
+		run3(2048, 1024);
+		clFinish(commandQueue);
+		opengl->glRender(VertexBuffer3D);
+
 		return 1;
 	}
 	 

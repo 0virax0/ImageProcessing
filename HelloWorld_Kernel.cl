@@ -10,6 +10,7 @@ typedef struct tag_kernel_nonPtr_Args{
     int offsetY;
     int old_offsetX;
     int old_offsetY;
+    int distance;
 }kernel_nonPtr_Args;
 
 int to1D (int width)
@@ -165,10 +166,10 @@ __kernel void matching(
     
    //get offset computed before
    int2 startPosition;
-   if(args-> old_offsetX < 0){
+   if(args-> old_offsetY < 0){
        startPosition = (int2)(id.x + args->offsetX, id.y + args->offsetY);
    }else{
-       float2 oldPos = reductionBuffer0[args->old_offsetX + id.x/2 + (args->old_offsetY + id.y/2)* reductionWidth] * 2;
+       float2 oldPos = reductionBuffer0[args->old_offsetX + id.x/2 + (args->old_offsetY + id.y/2)* reductionWidth] *2;
        startPosition = (int2)((int)(oldPos.x) + args->offsetX, (int)(oldPos.y) + args->offsetY);
    }
        
@@ -181,18 +182,49 @@ __kernel void matching(
            for(int yLoc=-1; yLoc<=1; yLoc++){
                for(int xLoc=-1; xLoc<=1; xLoc++){
                    float2 diff2 = myValue - reductionBuffer1[xLoc + x + startPosition.x + (yLoc + y + startPosition.y)*reductionWidth];
-                   float diff = fast_length(diff2);
-                   if(diff < minDiff){
+                   float diff = length(diff2);
+                   if(diff < minDiff && length(diff)){
                         minDiff = diff;
-                        minCoordX = x;
-                        minCoordY = y;
+                        minCoordX = xLoc;
+                        minCoordY = yLoc;
                    }
                }
            }
-           float2 newCoord = (float2)((float)(minCoordX + x + startPosition.x - args->offsetX), (float)(minCoordY + y + startPosition.y - args->offsetY));
+            float2 newCoord =(float2)((float)(minCoordX + x + startPosition.x - args->offsetX), (float)(minCoordY + y + startPosition.y - args->offsetY));
+        //(minDiff >0.02f)?:(float2)((float)id.x,(float)id.y);
       
-           reductionBuffer0[(x + myPos.x) + (y + myPos.y) * reductionWidth] = newCoord;
-           write_imagef (output, (int2)((x + myPos.x) , (y + myPos.y)), (float4)(newCoord.x/1024.0f,newCoord.y/512.0f,0.0f,1.0f));        
+            reductionBuffer0[(x + myPos.x) + (y + myPos.y) * reductionWidth] = newCoord;
+           write_imagef (output, (int2)((x + myPos.x) , (y + myPos.y)), (float4)(newCoord.x/(float)get_global_size(0)/2,newCoord.y/(float)get_global_size(1)/2,0.0f,1.0f));        
        }
    } 
+}
+__kernel void triangulate(
+    __constant kernel_nonPtr_Args* args,
+    __global float3* vertexBuffer,
+    __global float2* reductionBuffer)
+{
+    int2 id = {get_global_id(0),get_global_id(1)};
+    int2 dim = {get_global_size(0), get_global_size(1)};
+    int2 myPos = {id.x + args->offsetX, dim.y-id.y + args->offsetY};
+    int reductionWidth = 4096+2048;
+    
+    float2 alpha0 = (float2){ M_PI_F * (id.x - dim.x/2) / 1664, M_PI_2_F * (id.y - dim.y/2) / 832};
+    float2 alpha1 = reductionBuffer[(myPos.x) + (myPos.y) * reductionWidth];
+           alpha1 = (float2){ M_PI_2_F * ((int)alpha1.x - dim.x/2) / 3328, M_PI_2_F * ((int)(dim.y-alpha1.y) - dim.y/2) / 1664};
+    float tanX =  tan(M_PI_2_F - alpha0.x);
+    float tanY =  tan(M_PI_2_F - alpha1.x);
+    float tanZ0 = tan(M_PI_2_F - alpha0.y);
+    float tanZ1 = tan(M_PI_2_F - alpha1.y);
+    
+    float x = -(float)args->distance / (tanX - tanY);
+    float y = x * tanX;
+    float projectedLength = length((float2)(x,y));
+    float z = (projectedLength * tanZ0 + projectedLength * tanZ1) / 2.0f;
+    
+    float3 point = (float3)(x,z,y);
+    float len = length(point);
+    if(len> 20.0f) point = normalize(point) * 20.0f;    //if the point is too far away project in a sphere
+    
+    vertexBuffer[id.x + id.y * dim.x] = point;
+    
 }

@@ -78,7 +78,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)bin\x86_64\$(Configuration)\</OutDir>
     <IntDir>temp\x86_64\$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)SDL2\include;$(SolutionDir)glew-2.0.0\include;$(HOMEPATH)\AMD APP SDK\2.9\include\SDKUtil;$(SolutionDir)libjpeg-turbo64\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)SDL2\include;$(SolutionDir)glew-2.0.0\include;$(HOMEPATH)\AMD APP SDK\2.9\include\SDKUtil;$(SolutionDir)glm;$(SolutionDir)libjpeg-turbo64\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)SDL2\lib\x64;$(SolutionDir)glew-2.0.0\lib;$(SolutionDir)libjpeg-turbo64\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

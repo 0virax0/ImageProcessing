@@ -7,6 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cmath>
+#include <glm.hpp>
+#include <gtc/matrix_transform.hpp>
+#include <gtc/type_ptr.hpp>
 #include <CL/cl.h>
 #include <iostream>
 #include <fstream>

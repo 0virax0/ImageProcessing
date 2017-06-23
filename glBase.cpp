@@ -17,8 +17,8 @@
 			"gpuMonitor",
  			SDL_WINDOWPOS_CENTERED, 
 			SDL_WINDOWPOS_CENTERED,
-			1024, 
-			512, 
+			screenWidth,
+			screenHeight,
 			SDL_WINDOW_OPENGL
 		);
 		if (!window)
@@ -55,9 +55,15 @@
 	}
 
 	 int glWrapper::initGl() {
-	    char sh1[100]; strcpy(sh1, THIS_FOLDER); strcat(sh1, "\\shaders\\vertex.glsl");
-		char sh2[100]; strcpy(sh2, THIS_FOLDER); strcat(sh2, "\\shaders\\fragment.glsl");
+	    char sh1[100]; strcpy(sh1, THIS_FOLDER); strcat(sh1, "\\shaders\\vertexMonitor.glsl");
+		char sh2[100]; strcpy(sh2, THIS_FOLDER); strcat(sh2, "\\shaders\\fragmentMonitor.glsl");
 		programID = LoadShaders(sh1, sh2);
+
+		strcpy(sh1, THIS_FOLDER); strcat(sh1, "\\shaders\\vertexRender.glsl");
+		strcpy(sh2, THIS_FOLDER); strcat(sh2, "\\shaders\\fragmentRender.glsl");
+		programRenderID = LoadShaders(sh1, sh2);
+
+
 
 		//define VAO
 		GLuint VAO;
@@ -131,8 +137,35 @@
 		int err = clEnqueueReleaseGLObjects(commandQueue, 1, &imageCL, 0, 0, 0);
 		clFinish(commandQueue); //emptyes the host cl queue and wait for end, ready for the gl's;
 		if (glGetError() != GL_NO_ERROR)std::cout << glGetError() << std::endl;
-		return printErr(err, "acquireTexture failed");
+		return printErr(err, "acquireTexture/buffer failed");
 	}
+
+	 cl_mem glWrapper::createGLbuffer(size_t width, size_t height, cl_mem_flags flags) {
+		 // Create one OpenGL texture
+		 //define VAO
+		 GLuint VAO;
+		 glGenVertexArrays(1, &VAO);
+		 glBindVertexArray(VAO);
+
+		 GLuint bufferID;
+
+		 glGenBuffers(1, &bufferID);
+		 new destroyable<GLuint>(&bufferID, this);
+		 glBindBuffer(GL_ARRAY_BUFFER, bufferID);
+		 glBufferData(GL_ARRAY_BUFFER, sizeof(float)*4 * width * height, 0, GL_DYNAMIC_DRAW);
+
+		 //to cl buffer
+		 cl_mem bufferCL = clCreateFromGLBuffer(context, flags,
+			 bufferID, &err);
+		 printErr(err, "failed to convert buffer to cl buffer");
+
+		 //make sure the buffer can be used by cl kernel
+		 releaseTexture(bufferCL);		//same for buffers
+
+		 vertexBuffer3d = bufferID;
+		 if (glGetError() != GL_NO_ERROR)std::cout << glGetError() << std::endl;
+		 return bufferCL;
+	 }
 
 	 int glWrapper::glOps(image* img) {
 		//prints the image
@@ -166,6 +199,58 @@
 		glFinish();
 		return SUCCESS;
 	} 
+
+	 int glWrapper::glRender(cl_mem buffer) {
+		 glEnable(GL_PROGRAM_POINT_SIZE_ARB);
+		 acquireTexture(buffer);
+		 
+		 int lastTime = 0;
+		 while (true) {
+			 loopRender();
+
+			 int newTime = SDL_GetTicks();
+			 char buffer[33]; itoa((int)1000/(newTime- lastTime), buffer, 10); 
+			 char str[100]; strcpy(str, "GPU monitor : "); strcat(str, buffer);
+			 SDL_SetWindowTitle(window, str);
+			 lastTime = newTime;
+		 }		
+		 if (glGetError() != GL_NO_ERROR)std::cout << glGetError() << std::endl;
+
+		 glFinish();
+
+		 return SUCCESS;
+	 }
+	 void glWrapper::loopRender() {
+		 //matrix
+		 float angle = SDL_GetTicks() / 1000.0 * 10;  // 10° per second
+
+		 glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f*screenWidth / screenHeight, 0.1f, 100.0f);
+		 glm::mat4 View = glm::lookAt(glm::vec3(0.0, 0.0, -5.0), glm::vec3(0.0, 0.0, 0.0),
+			 glm::vec3(0.0, 1.0, 0.0));
+		 glm::mat4 Model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, 0.0));
+		 Model = glm::rotate(Model, glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f));
+		 glm::mat4 mvp_matrix = Projection * View * Model;
+
+		 glUseProgram(programRenderID); 
+		 glClearColor(0.0, 0.0, 1.0, 1.0);
+		 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		 // 1rst attribute buffer : vertices
+		 glEnableVertexAttribArray(0);
+		 glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer3d);
+		 glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+		 // 2nd atrtibute: mvp matrix
+		 glEnableVertexAttribArray(1);
+		 glUniformMatrix4fv(1, 1, GL_FALSE, glm::value_ptr(mvp_matrix));
+
+		 glDrawArrays(GL_POINTS, 0, 2048 * 1024);
+		 glDisableVertexAttribArray(1);
+		 glDisableVertexAttribArray(0);
+
+		 SDL_GL_SwapWindow(window);
+
+	 }
 	 int glWrapper::Cleanup()
 	{
 		SDL_GL_DeleteContext(SDLcontext);
