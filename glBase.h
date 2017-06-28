@@ -5,6 +5,7 @@
 
 
 	class glWrapper : RAIIscope{
+	public:
 			SDL_Window *window;
 			int screenWidth = 1024;
 			int screenHeight = 512;
@@ -25,7 +26,7 @@
 			int acquireTexture(cl_mem imageCL);
 
 			int glOps(image* img);
-			int glRender(cl_mem buffer);
+			int glRender(cl_mem* buffer);
 			void glWrapper::loopRender();
 			int Cleanup();
 	};

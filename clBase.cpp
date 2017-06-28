@@ -486,7 +486,7 @@ public:
 		else
 		{
 			devices = (cl_device_id*)malloc(numDevices * sizeof(cl_device_id));
-			printErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, numDevices, devices, NULL), "failed to get device IDs of gpu");
+ 			printErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, numDevices, devices, NULL), "failed to get device IDs of gpu");
 		}
 		new destroyable<void*>((void**)&devices, this);
 		return 1;
@@ -495,6 +495,8 @@ public:
 	/*Step 3: Create context.*/
 	int createContext() {
 		opengl = new glWrapper();
+		opengl->screenWidth = 1024;
+		opengl->screenHeight = 512;
 		opengl->initContext(platform, devices);
 		return 1;
 	}
@@ -532,7 +534,7 @@ public:
 			memset(buildLog, 0, buildLogSize);
 			printErr(clGetProgramBuildInfo(program, devices[0], CL_PROGRAM_BUILD_LOG, buildLogSize, buildLog, &buildLogSize),"unable to print kernel compilation errors");
 
-			cout << buildLog;
+			cout << buildLog; 
 		}
 		return 1;
 	}
@@ -555,8 +557,7 @@ public:
 	}
 	int createVertexBuffer(int width, int height) {
 		//create gl- cl shared buffer
-		GLuint vertexBuffer3dID;
-		VertexBuffer3D = opengl->createGLbuffer(width, height, CL_MEM_WRITE_ONLY);
+		VertexBuffer3D = opengl->createGLbuffer(width, height, CL_MEM_READ_WRITE);
 		new destroyable<cl_mem>(&VertexBuffer3D, this);
 		return 1;
 	}
@@ -599,7 +600,7 @@ public:
 		};
 		imgKernel = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9 * sizeof(float), (void *)imgKernelPtr, &err);
 		printErr(err, "imgkernel failed");
-		new destroyable<cl_mem>(&imgKernel, opencl);
+		new destroyable<cl_mem>(&imgKernel, opencl); 
 
 		float imgKernelPtr1[] = {
 			1.0f, 0.0f, -1.0f,
@@ -706,13 +707,14 @@ public:
 		Barg.offsetX = offsetX;
 		Barg.offsetY = offsetY;
 		Barg.distance = panoramaDistance;
-
+		 
 		cl_mem argBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(kernel_nonPtr_Args), (void *)&Barg, &err);
 		printErr(err, "argBuffer failed");
 
 		printErr(clSetKernelArg(kernelTriangulation, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
 		printErr(clSetKernelArg(kernelTriangulation, 1, sizeof(cl_mem), (void *)&VertexBuffer3D), "failed set VertexBuffer3D arg");
 		printErr(clSetKernelArg(kernelTriangulation, 2, sizeof(cl_mem), (void *)&img->reductionBuffer0), "failed set reductionBuffer0 arg");
+		printErr(clSetKernelArg(kernelTriangulation, 3, sizeof(cl_mem), (void *)&img->outputImage), "failed set reductionBuffer0 arg");
 
 		return 1;
 	}
@@ -728,77 +730,81 @@ public:
 
 	/*Step 9: Running the kernel.*/
 	int startKernel() {
-		set0(&img->reductionBuffer0);
+		set0(&img->reductionBuffer0); 
 		run0();
+		
 
 		//reduction phase (9 steps)
 		cout << "-->start enqueue kernels 1" << endl;
-		int oldX = 0, oldY = 0, oldHeight = 2048;
-		for (int i = 0; i < 9; i++) {
-			clFinish(commandQueue);
+		int oldOffX = 0, oldOffY = 0, oldHeight = 2048;
+		for (int i = 0; i < 9; i++) { 
+				clFinish(commandQueue);
 			
-			int newY = (i < 1) ? 0 : oldY + oldHeight;
-			set1(&img->reductionBuffer0, oldX, oldY, 4096, newY);
+			int newY = (i < 1) ? 0 : oldOffY + oldHeight;
+			set1(&img->reductionBuffer0, oldOffX, oldOffY, 4096, newY);
 			run1(2048 / pow(2,i), 1024 / pow(2, i));		//start half dimensions because it will expand
 
-			oldX = 4096;
-			oldY = (i < 1) ? 0 : oldY + oldHeight;
+			oldOffX = 4096;
+			oldOffY = (i < 1) ? 0 : oldOffY + oldHeight; 
 			oldHeight /= 2;
-		}		
+		}		 
 		clFinish(commandQueue);
-		getToScreen();
-		system("pause");
+		getToScreen(); 
+		//system("pause"); 
 	//do the same for the second image
 		cout << "second image processing" << endl;
-		if (reLoadImage() == 0) cout << "image reloading failed";
+		if (reLoadImage() == 0) cout << "image reloading failed"; 
 		set0(&img->reductionBuffer1);
 		run0();
 
 		//reduction phase (9 steps)
 		cout << "-->start enqueue kernels 1" << endl;
-	    oldX = 0, oldY = 0, oldHeight = 2048;
+	    oldOffX = 0, oldOffY = 0, oldHeight = 2048;
 		for (int i = 0; i < 9; i++) {
 			clFinish(commandQueue);
 
-			int newY = (i < 1) ? 0 : oldY + oldHeight;
-			set1(&img->reductionBuffer1, oldX, oldY, 4096, newY);
+			int newY = (i < 1) ? 0 : oldOffY + oldHeight;
+			set1(&img->reductionBuffer1, oldOffX, oldOffY, 4096, newY);
 			run1(2048 / pow(2, i), 1024 / pow(2, i));		//start half dimensions because it will expand
 
-			oldX = 4096;
-			oldY = (i < 1) ? 0 : oldY + oldHeight;
+			oldOffX = 4096;
+			oldOffY = (i < 1) ? 0 : oldOffY + oldHeight;
 			oldHeight /= 2;
 		}
 		clFinish(commandQueue);
 		getToScreen();
-		system("pause");
-
+		//system("pause"); 
+		
 	//merge them all
 		cout << "merging" << endl;
 
 		//expansion phase (9 steps)
 		cout << "-->start enqueue kernels 2" << endl;
-		oldY+=4, oldHeight = 2;
-		for (int i = 0; i < 9; i++) {
+		oldOffY+=4, oldHeight = 2;
+
+		for (int i = 0; i < 9; i++) { 
 			clFinish(commandQueue);
 
 			oldHeight *= 2;
-			int newY = oldY - oldHeight; 
+			int newY = oldOffY - oldHeight; 
 			if(i<1) set2(4096, -1, 4096, newY); 
-			else set2(4096, oldY, 4096, newY);
+			else set2(4096, oldOffY, 4096, newY);
 			run2(4 * pow(2, i), 2 * pow(2, i));		//start half dimensions because it will expand
-			oldY = newY;
+			oldOffY = newY;
 		}  
-		clFinish(commandQueue);  
-		getToScreen();
+		clFinish(commandQueue); 
+		getToScreen(); 
 		system("pause");
 
-	//pass computed vertices to opengl
+	//pass computed vertices to opengl 
+		clFinish(commandQueue);
 		createVertexBuffer(2048, 1024);
 		cout << "-->start enqueue kernel 3" << endl;
-		set3(10, 2048, 0);
+		set3(10, 4096, 0);
 		run3(2048, 1024);
 		clFinish(commandQueue);
-		opengl->glRender(VertexBuffer3D);
+		//getToScreen();
+		opengl->glRender(&VertexBuffer3D);
 
 		return 1;
 	}
@@ -845,7 +851,6 @@ int main(int argc, char* argv[])
 
 	clFinish(commandQueue);
 	std::cout << "Passed!\n";
-	std::system("pause");
 
 	delete opencl;
 	return SUCCESS;

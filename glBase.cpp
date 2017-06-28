@@ -142,7 +142,7 @@
 
 	 cl_mem glWrapper::createGLbuffer(size_t width, size_t height, cl_mem_flags flags) {
 		 // Create one OpenGL texture
-		 //define VAO
+		 //define VAO 
 		 GLuint VAO;
 		 glGenVertexArrays(1, &VAO);
 		 glBindVertexArray(VAO);
@@ -164,6 +164,8 @@
 
 		 vertexBuffer3d = bufferID;
 		 if (glGetError() != GL_NO_ERROR)std::cout << glGetError() << std::endl;
+
+		 glBindBuffer(GL_ARRAY_BUFFER, 0);
 		 return bufferCL;
 	 }
 
@@ -197,20 +199,29 @@
 		SDL_GL_SwapWindow(window);
 		releaseTexture(img->outputImage);
 		glFinish();
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
 		return SUCCESS;
 	} 
 
-	 int glWrapper::glRender(cl_mem buffer) {
+	 int glWrapper::glRender(cl_mem* buffer) {
 		 glEnable(GL_PROGRAM_POINT_SIZE_ARB);
-		 acquireTexture(buffer);
+		 acquireTexture(*buffer);
 		 
+		 SDL_Event event;
 		 int lastTime = 0;
 		 while (true) {
 			 loopRender();
+			 SDL_PumpEvents();
+		 
+			 //quit
+			 SDL_PollEvent(&event);
+			 if (event.type == SDL_QUIT) break;
 
+			 //FPS counter
 			 int newTime = SDL_GetTicks();
 			 char buffer[33]; itoa((int)1000/(newTime- lastTime), buffer, 10); 
-			 char str[100]; strcpy(str, "GPU monitor : "); strcat(str, buffer);
+			 char str[100]; strcpy(str, "GPU monitor FPS: "); strcat(str, buffer);
 			 SDL_SetWindowTitle(window, str);
 			 lastTime = newTime;
 		 }		
@@ -222,33 +233,34 @@
 	 }
 	 void glWrapper::loopRender() {
 		 //matrix
-		 float angle = SDL_GetTicks() / 1000.0 * 10;  // 10° per second
-
+		 float angle = SDL_GetTicks() / 1000.0 * 10;  
+		    
 		 glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f*screenWidth / screenHeight, 0.1f, 100.0f);
-		 glm::mat4 View = glm::lookAt(glm::vec3(0.0, 0.0, -5.0), glm::vec3(0.0, 0.0, 0.0),
+		 glm::mat4 View = glm::lookAt(glm::vec3(0.0, 0.0, -10.0), glm::vec3(0.0, 0.0, 0.0),
 			 glm::vec3(0.0, 1.0, 0.0));
-		 glm::mat4 Model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, 0.0));
+		 glm::mat4 Model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, 0.0)); 
 		 Model = glm::rotate(Model, glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f));
 		 glm::mat4 mvp_matrix = Projection * View * Model;
-
+		  
 		 glUseProgram(programRenderID); 
-		 glClearColor(0.0, 0.0, 1.0, 1.0);
-		 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		 glClearColor(0.0, 0.0, 1.0, 1.0);   
+		 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); 
 
-		 // 1rst attribute buffer : vertices
+		 // 1rst attribute buffer : vertices  
 		 glEnableVertexAttribArray(0);
+
 		 glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer3d);
-		 glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+		 glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, 0); 
 
 		 // 2nd atrtibute: mvp matrix
-		 glEnableVertexAttribArray(1);
+		 glEnableVertexAttribArray(1); 
 		 glUniformMatrix4fv(1, 1, GL_FALSE, glm::value_ptr(mvp_matrix));
 
-		 glDrawArrays(GL_POINTS, 0, 2048 * 1024);
+		 glDrawArrays(GL_POINTS, 0, 2048*1024);
 		 glDisableVertexAttribArray(1);
-		 glDisableVertexAttribArray(0);
-
-		 SDL_GL_SwapWindow(window);
+		 glDisableVertexAttribArray(0); 
+		 
+		 SDL_GL_SwapWindow(window); 
 
 	 }
 	 int glWrapper::Cleanup()
