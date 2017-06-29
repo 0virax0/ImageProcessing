@@ -347,8 +347,12 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 
 			if(!isReloading){
 				//create image clmem
-				inputImage = clCreateImage2D(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, &format, width, height, 0, NULL, &err);
+				/*inputImage = clCreateImage2D(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, &format, width, height, 0, NULL, &err);
 				printErr(err, "imageIn cl_mem failed");
+				new destroyable<cl_mem>(&inputImage, this);*/
+
+				//create gl- cl shared output texture
+				inputImage = opengl->createGLtexture(width, height, GL_RGBA8, GL_UNSIGNED_INT_8_8_8_8, CL_MEM_READ_ONLY, &inTextureID);
 				new destroyable<cl_mem>(&inputImage, this);
 
 				//create reductionBuffer
@@ -356,8 +360,8 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 				printErr(err, "reductionBuffer cl_mem failed");
 				new destroyable<cl_mem>(&reductionBuffer0, this);
 
-				//create gl- cl shared texture
-				outputImage = opengl->createGLtexture(4096+2048, 2048, CL_MEM_READ_WRITE, &outTextureID);
+				//create gl- cl shared output texture
+				outputImage = opengl->createGLtexture(4096+2048, 2048, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, CL_MEM_READ_WRITE, &outTextureID);
 				new destroyable<cl_mem>(&outputImage, this);
 			}
 			else {
@@ -671,7 +675,7 @@ public:
 		return 1;
 	}
 	/*Step 9.21: set kernel2.*/
-	int set2(int old_offsetX, int old_offsetY, int offsetX, int offsetY) {
+	int set2(int old_offsetX, int old_offsetY, int offsetX, int offsetY, cl_mem* reductionFirst, cl_mem* reductionSecond) {
 		kernel_nonPtr_Args Barg;
 		Barg.offsetX = offsetX;
 		Barg.offsetY = offsetY;
@@ -683,8 +687,8 @@ public:
 
 		printErr(clSetKernelArg(kernelMatching, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
 		printErr(clSetKernelArg(kernelMatching, 1, sizeof(cl_mem), (void *)&img->outputImage), "failed set output arg");
-		printErr(clSetKernelArg(kernelMatching, 2, sizeof(cl_mem), (void *)&img->reductionBuffer0), "failed set reductionBuffer0 arg");
-		printErr(clSetKernelArg(kernelMatching, 3, sizeof(cl_mem), (void *)&img->reductionBuffer1), "failed set reductionBuffer1 arg");
+		printErr(clSetKernelArg(kernelMatching, 2, sizeof(cl_mem), (void *)reductionFirst), "failed set reductionBuffer0 arg");
+		printErr(clSetKernelArg(kernelMatching, 3, sizeof(cl_mem), (void *)reductionSecond), "failed set reductionBuffer1 arg");
 
 		return 1; 
 	}
@@ -702,7 +706,7 @@ public:
 		return 1;
 	}
 	/*Step 9.31: set kernel3.*/
-	int set3(int panoramaDistance, int offsetX, int offsetY){
+	int set3(int panoramaDistance, int offsetX, int offsetY, cl_mem* reduction){
 		kernel_nonPtr_Args Barg;
 		Barg.offsetX = offsetX;
 		Barg.offsetY = offsetY;
@@ -713,7 +717,7 @@ public:
 
 		printErr(clSetKernelArg(kernelTriangulation, 0, sizeof(cl_mem), (void *)&argBuffer), "failed set argBuffer arg");
 		printErr(clSetKernelArg(kernelTriangulation, 1, sizeof(cl_mem), (void *)&VertexBuffer3D), "failed set VertexBuffer3D arg");
-		printErr(clSetKernelArg(kernelTriangulation, 2, sizeof(cl_mem), (void *)&img->reductionBuffer0), "failed set reductionBuffer0 arg");
+		printErr(clSetKernelArg(kernelTriangulation, 2, sizeof(cl_mem), (void *)reduction), "failed set reductionBuffer0 arg");
 		printErr(clSetKernelArg(kernelTriangulation, 3, sizeof(cl_mem), (void *)&img->outputImage), "failed set reductionBuffer0 arg");
 
 		return 1;
@@ -783,28 +787,28 @@ public:
 		oldOffY+=4, oldHeight = 2;
 
 		for (int i = 0; i < 9; i++) { 
-			clFinish(commandQueue);
+			clFinish(commandQueue); 
 
 			oldHeight *= 2;
 			int newY = oldOffY - oldHeight; 
-			if(i<1) set2(4096, -1, 4096, newY); 
-			else set2(4096, oldOffY, 4096, newY);
+			if(i<1) set2(4096, -1, 4096, newY, &img->reductionBuffer1, &img->reductionBuffer0);	//inverted buffers for voxel color
+			else set2(4096, oldOffY, 4096, newY, &img->reductionBuffer1, &img->reductionBuffer0);
 			run2(4 * pow(2, i), 2 * pow(2, i));		//start half dimensions because it will expand
-			oldOffY = newY;
-		}  
+			oldOffY = newY; 
+		}
 		clFinish(commandQueue); 
 		getToScreen(); 
 		system("pause");
 
 	//pass computed vertices to opengl 
-		clFinish(commandQueue);
+		clFinish(commandQueue); 
 		createVertexBuffer(2048, 1024);
 		cout << "-->start enqueue kernel 3" << endl;
-		set3(10, 4096, 0);
+		set3(10, 4096, 0, &img->reductionBuffer1);
 		run3(2048, 1024);
 		clFinish(commandQueue);
 		//getToScreen();
-		opengl->glRender(&VertexBuffer3D);
+		opengl->glRender(&VertexBuffer3D, img);
 
 		return 1;
 	}

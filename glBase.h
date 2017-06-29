@@ -19,14 +19,14 @@
 			int initContext(cl_platform_id platform, cl_device_id* device);
 			int initGl();
 
-			cl_mem createGLtexture(size_t width, size_t height, cl_mem_flags flags, GLuint* outTextID);
+			cl_mem createGLtexture(size_t width, size_t height, GLint internalFormat, GLenum type, cl_mem_flags flags, GLuint* outTextID);
 			cl_mem createGLbuffer(size_t width, size_t height, cl_mem_flags flags);
 
 			int releaseTexture(cl_mem imageCL);
 			int acquireTexture(cl_mem imageCL);
 
 			int glOps(image* img);
-			int glRender(cl_mem* buffer);
+			int glRender(cl_mem* buffer, image* inputImage);
 			void glWrapper::loopRender();
 			int Cleanup();
 	};

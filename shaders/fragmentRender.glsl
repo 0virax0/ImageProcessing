@@ -1,5 +1,7 @@
 #version 410 core
-out vec4 color;
+in vec2 UV;
+uniform sampler2D texture0;
+out vec3 color;
 void main(){
-  color = vec4(1.0, 1.0, 1.0, 1.0);
+  color = texture( texture0, UV ).rgb;
 }

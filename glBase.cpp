@@ -102,7 +102,7 @@
 		return SUCCESS;
 	}
 
-	 cl_mem glWrapper::createGLtexture(size_t width, size_t height, cl_mem_flags flags, GLuint* outTextID) {
+	 cl_mem glWrapper::createGLtexture(size_t width, size_t height, GLint internalFormat, GLenum type, cl_mem_flags flags, GLuint* outTextID) {
 		// Create one OpenGL texture
 		GLuint textureID;
 		glGenTextures(1, &textureID);
@@ -111,7 +111,7 @@
 		glBindTexture(GL_TEXTURE_2D, textureID);
 
 		// Give the empty image to OpenGL
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, 0);
+		glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, GL_RGBA, type, 0);
 
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -204,15 +204,14 @@
 		return SUCCESS;
 	} 
 
-	 int glWrapper::glRender(cl_mem* buffer) {
+	 int glWrapper::glRender(cl_mem* buffer, image* inputImage) {
 		 glEnable(GL_PROGRAM_POINT_SIZE_ARB);
 		 acquireTexture(*buffer);
 		 
 		 SDL_Event event;
 		 int lastTime = 0;
-		 while (true) {
-			 loopRender();
-			 SDL_PumpEvents();
+		 while (true) {		 
+      		 SDL_PumpEvents();
 		 
 			 //quit
 			 SDL_PollEvent(&event);
@@ -223,14 +222,21 @@
 			 char buffer[33]; itoa((int)1000/(newTime- lastTime), buffer, 10); 
 			 char str[100]; strcpy(str, "GPU monitor FPS: "); strcat(str, buffer);
 			 SDL_SetWindowTitle(window, str);
-			 lastTime = newTime;
+			 lastTime = newTime; 
+
+		//render
+			 //set Image texture unit
+			 acquireTexture(inputImage->inputImage);
+			 glActiveTexture(GL_TEXTURE0);
+			 glBindTexture(GL_TEXTURE_2D, inputImage->inTextureID);
+			 loopRender();
 		 }		
 		 if (glGetError() != GL_NO_ERROR)std::cout << glGetError() << std::endl;
 
-		 glFinish();
+		 glFinish(); 
 
 		 return SUCCESS;
-	 }
+	 } 
 	 void glWrapper::loopRender() {
 		 //matrix
 		 float angle = SDL_GetTicks() / 1000.0 * 10;  

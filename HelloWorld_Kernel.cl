@@ -94,7 +94,7 @@ barrier(CLK_LOCAL_MEM_FENCE);
         p = p+i;
         float2 sumSecond = (float2)(0.0f,0.0f);
         for(int y=-1; y<=1; y++){
-            for(int x=-1; x<=1 && x!=0 && y!=0; x++){
+            for(int x=-1; x<=1 && !(x==0 && y==0); x++){        
                 float3 gradientNear = local1 [p + (x + 22*y)];
                 gradientNear = gradientNear*(pow(gradientNear.x, 2) + pow(gradientNear.y, 2));
                 sumSecond += (float2)(gradientNear.x,gradientNear.y);
@@ -185,10 +185,10 @@ __kernel void matching(
    for(int x=0; x<2; x++){
        for(int y=0; y<2; y++){
            float2 myValue = reductionBuffer0[(x + myPos.x) + (y + myPos.y) * reductionWidth];
-           float minDiff = INFINITY;
+           float minDiff = length(myValue - reductionBuffer1[x + startPosition.x + (y + startPosition.y)*reductionWidth]);  //initialize to the center
            int minCoordX = 0, minCoordY = 0;
            for(int yLoc=-1; yLoc<=1; yLoc++){
-               for(int xLoc=-1; xLoc<=1; xLoc++){
+               for(int xLoc=-1; xLoc<=1 && !(yLoc==0&&xLoc==0); xLoc++){    //exclude center position
                    float2 diff2 = myValue - reductionBuffer1[xLoc + x + startPosition.x + (yLoc + y + startPosition.y)*reductionWidth];
                    float diff = length(diff2);
                    if(diff < minDiff){
@@ -242,9 +242,9 @@ __kernel void triangulate(
     float3 point = (p0+p1) / 2.0f;
     
     float len = length(point);
-    if(len> 20.0f) point = point/len * 20.0f;    //if the point is too far away project onto a sphere
+    if(len> 30.0f || isnan(point).x<0) point = v0 * 30.0f;    //if the point is too far away project onto a sphere
 
-    vertexBuffer[id.x + id.y * dim.x] = (float4)(point.x, point.z, point.y,1.0f);
-    //write_imagef (output, (int2)(id.x,id.y), (float4)(((float)id.x)/1000.0f,((float)id.y)/1000.0f,0.0f,1.0f));  
+    vertexBuffer[id.x + id.y * dim.x] = (float4)(-point.x, point.z, point.y,1.0f);
+ 
 barrier(CLK_GLOBAL_MEM_FENCE); 
 }

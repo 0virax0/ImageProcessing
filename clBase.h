@@ -82,6 +82,7 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 			cl_mem reductionBuffer0;
 			cl_mem reductionBuffer1;
 			cl_mem outputImage;
+			GLuint inTextureID;
 			GLuint outTextureID;
 			unsigned char* imageBuffer;
 			unsigned char* imageOutBuffer;
