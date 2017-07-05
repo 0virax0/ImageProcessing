@@ -469,7 +469,7 @@ public:
 			cl_platform_id* platforms = (cl_platform_id*)malloc(numPlatforms * sizeof(cl_platform_id));
 			printErr(clGetPlatformIDs(numPlatforms, platforms, NULL),"failed to get platform IDs");
 			platform = platforms[0];
-			free(platforms);
+			free(platforms); 
 		}
 		return 1;
 	}
@@ -528,7 +528,7 @@ public:
 
 	/*Step 6: Build program. */
 	int buildProgram() {
-		if (clBuildProgram(program, 1, devices, NULL, NULL, NULL) != CL_SUCCESS)
+		if (clBuildProgram(program, 1, devices, NULL, NULL, NULL) != CL_SUCCESS) 
 		{
 			char * buildLog = NULL;
 			size_t buildLogSize = 10000;
@@ -754,7 +754,7 @@ public:
 		}		 
 		clFinish(commandQueue);
 		getToScreen(); 
-		//system("pause"); 
+		system("pause"); 
 	//do the same for the second image
 		cout << "second image processing" << endl;
 		if (reLoadImage() == 0) cout << "image reloading failed"; 
@@ -777,7 +777,7 @@ public:
 		}
 		clFinish(commandQueue);
 		getToScreen();
-		//system("pause"); 
+		system("pause"); 
 		
 	//merge them all
 		cout << "merging" << endl;

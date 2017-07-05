@@ -169,6 +169,7 @@ __kernel void matching(
     __global float2* reductionBuffer1)
 {
     int2 id = {get_global_id(0)*2,get_global_id(1)*2};
+    int2 dim = {get_global_size(0)*2,get_global_size(1)*2};
     int2 myPos = {id.x + args->offsetX, id.y + args->offsetY};
     int reductionWidth = 4096+2048;
     
@@ -184,22 +185,86 @@ __kernel void matching(
    //compute the 4 positions
    for(int x=0; x<2; x++){
        for(int y=0; y<2; y++){
-           float2 myValue = reductionBuffer0[(x + myPos.x) + (y + myPos.y) * reductionWidth];
-           float minDiff = length(myValue - reductionBuffer1[x + startPosition.x + (y + startPosition.y)*reductionWidth]);  //initialize to the center
-           int minCoordX = 0, minCoordY = 0;
+       //1) get central value
+          float myValue = 0.0f;
            for(int yLoc=-1; yLoc<=1; yLoc++){
-               for(int xLoc=-1; xLoc<=1 && !(yLoc==0&&xLoc==0); xLoc++){    //exclude center position
-                   float2 diff2 = myValue - reductionBuffer1[xLoc + x + startPosition.x + (yLoc + y + startPosition.y)*reductionWidth];
-                   float diff = length(diff2);
-                   if(diff < minDiff){
-                        minDiff = diff;
-                        minCoordX = xLoc;
-                        minCoordY = yLoc;
-                   }
+               for(int xLoc=-1; xLoc<=1; xLoc++){
+                   if(id.x + x + xLoc < dim.x && id.x + x + xLoc >= 0 && id.y + y + yLoc< dim.y && id.y + y + yLoc >= 0 )
+                   //if(1)
+                        myValue += (1/9) * dot(reductionBuffer0[(xLoc + x + startPosition.x) + (yLoc + y + startPosition.y) * reductionWidth], (float2)(0.7071f,0.7071f));
+                        else myValue += (1/9) * dot(reductionBuffer0[( x + startPosition.x) + ( y + startPosition.y) * reductionWidth], (float2)(0.7071f,0.7071f));
                }
            }
-            float2 newCoord = (float2)((float)(minCoordX + x + startPosition.x - args->offsetX), (float)(minCoordY + y + startPosition.y - args->offsetY));
-            //(length(myValue) >0.0001f)?:(float2)((float)get_global_size(0)*2,(float)get_global_size(1)*2);
+       //2)get weightened sum for each other value and subtract
+        __local float global1[5][5];
+        __local float local1[3][3];
+        for(int yLoc=-1; yLoc<=1; yLoc++){
+            for(int xLoc=-1; xLoc<=1; xLoc++){   
+                    float otherValue = 0.0f;                
+                    for(int ySub=-1; ySub<=1; ySub++){
+                        for(int xSub=-1; xSub<=1; xSub++){
+                             //if(id.x + x + xLoc + xSub < dim.x && id.x + x + xLoc + xSub >= 0 && id.y + y + yLoc + ySub < dim.y && id.y + y + yLoc + ySub >= 0 ){
+                                if(1){
+                                float d = dot(reductionBuffer1[(xSub + xLoc + x + startPosition.x) + (ySub + yLoc + y + startPosition.y) * reductionWidth], (float2)(0.7071f,0.7071f));
+                                otherValue += (1/9) * d;
+                                global1[xSub + xLoc + 2][ySub + yLoc + 2] = d;  
+                            }         
+                            else otherValue += (1/9) * dot(reductionBuffer1[(xLoc + x + startPosition.x) + ( yLoc + y + startPosition.y) * reductionWidth], (float2)(0.7071f,0.7071f));
+                        }
+                    }
+                    if(id.x + x + xLoc < dim.x && id.x + x + xLoc >= 0 && id.y + y + yLoc< dim.y && id.y + y + yLoc >= 0 )
+                        local1[xLoc+1][yLoc+1] = otherValue - myValue;
+                    else local1[xLoc+1][yLoc+1] = 0;
+               }
+           }
+        //3)determination of points in each 4 subpixel
+        __local float minValues[2][2];
+        __local float2 minPositions[2][2];
+            for(int grX=0; grX<2; grX++){
+                for(int grY=0; grY<2; grY++){  
+                    float val0 = local1[grX][grY];
+                    float val1 = local1[grX+1][grY];
+                    float val2 = local1[grX][grY+1];
+                    float val3 = local1[grX+1][grY+1];
+                    float dist0 = val1 - val0;  float dist1 = val3 - val1;
+                    float dist2 = val3 - val2;  float dist3 = val2 - val0;
+                    float2 vertices[4]; 
+                    if(dist0 > 0) vertices[0] = (float2)(-val0 / fabs(dist0), 0.0f);
+                        else vertices[0] = (float2)((val1) / fabs(dist0) + 1, 0.0f);
+                    if(dist1 > 0) vertices[1] = (float2)(0.0f, -val1 / fabs(dist1));
+                        else vertices[1] = (float2)(0.0f, (val3) / fabs(dist1) + 1);
+                    if(dist2 > 0) vertices[2] =(float2)( -val2 / fabs(dist2), 0.0f);
+                        else vertices[2] = (float2)((val3) / fabs(dist2) + 1, 0.0f);
+                    if(dist3 > 0) vertices[3] = (float2)(0.0f, -val0 / fabs(dist3));
+                        else vertices[3] = (float2)(0.0f, (val2) / fabs(dist3) + 1);
+                        
+                    //find the relative local minimum
+                    float2 minPos = (vertices[0] + vertices[1] + vertices[2] + vertices[3]) / 4.0f;
+                    //offbound values
+                    minPos = (float2)(clamp(minPos.x, -0.5f, 1.5f), clamp(minPos.y, -0.5f, 1.5f));
+                    //save min local->global pos
+                    minPos = minPos + (float2)((float)grX,(float)grY); //9x9 origin on top left
+                    
+                    //interpolation
+                    int posLeft = floor(minPos.x); int posTop = floor(minPos.y);
+                    float interpX0= (1 - minPos.x - posLeft) * global1[posLeft+1][posTop+1] + (minPos.x - posLeft) * global1[posLeft+2][posTop+1];
+                    float interpX1= (1 - minPos.x - posLeft) * global1[posLeft+1][posTop+2] + (minPos.x - posLeft) * global1[posLeft+2][posTop+2];
+           
+                    minValues[grX][grY] = (1 - minPos.y - posTop) * interpX0 + (minPos.y - posTop) * interpX1;
+                    minPositions[grX][grY] = minPos + (float2)(0.5f,0.5f) - (float2)(1.5f, 1.5f); //9x9 origin on center
+                } 
+            }
+            //find local minimum
+            float minDiff = INFINITY; float2 minP = (float2)(0.0f,0.0f);
+            for(int Sx = 0;Sx<2;Sx++){
+                for(int Sy = 0;Sy<2;Sy++){
+                    if(fabs(minValues[Sx][Sy]-myValue)<minDiff){
+                        minDiff = fabs(minValues[Sx][Sy]-myValue);
+                        minP = minPositions[Sx][Sy];
+                    }
+                }
+            }
+            float2 newCoord = (float2)((float)(minP.x + x + startPosition.x - args->offsetX), (float)(minP.y + y + startPosition.y - args->offsetY));
       
             reductionBuffer0[(x + myPos.x) + (y + myPos.y) * reductionWidth] = newCoord;
            write_imagef (output, (int2)((x + myPos.x) , (y + myPos.y)), (float4)(newCoord.x/(float)get_global_size(0)/2,newCoord.y/(float)get_global_size(1)/2,0.0f,1.0f));        
